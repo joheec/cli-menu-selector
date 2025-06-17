@@ -12,170 +12,67 @@ reset_delimiter() {
 }
 
 cursor_up() {
-    local inputCurrentOption=$1
-    local outputCurrentOption=$2
- 
-    if [[ $inputCurrentOption -gt 0 ]]; then
-        echo -en "\033[1A"
-        currentOption=$((inputCurrentOption - 1))
-    else
-        currentOption="$inputCurrentOption"
-    fi
-
-    eval "$outputCurrentOption=\"$currentOption\""
+    echo -en "\033[1A"
 }
 
 cursor_down() {
-    local inputCurrentOption=$1
-    local inputTotalOptions=$2
-    local outputCurrentOption=$3
-
-    if [[ $inputCurrentOption -lt $inputTotalOptions ]]; then
-        echo -en "\033[1B"
-        currentOption=$((inputCurrentOption + 1))
-    else
-        currentOption="$inputCurrentOption"
-    fi
-
-    eval "$outputCurrentOption=\"$currentOption\""
-}
-
-cursor_to_bottom() {
-    local inputCurrentOption=$1
-    local inputTotalOptions=$2
-
-    currentOption="$inputCurrentOption"
-
-    while [[ "$currentOption" -ne "$inputTotalOptions" ]]; do
-        cursor_down $currentOption $inputTotalOptions currentOption
-    done
-}
-
-delete_current_option() {
-    echo -ne "\033[2K\033[1A"
     echo -en "\033[1B"
 }
 
-delete_options() {
+safe_cursor_up() {
+    if [[ $CURRENT_OPTION -gt 0 ]]; then
+        cursor_up
+        CURRENT_OPTION=$(($CURRENT_OPTION-1))
+    fi
+}
+
+safe_cursor_down() {
+    if [[ $CURRENT_OPTION -lt $TOTAL_OPTIONS ]]; then
+        cursor_down
+        CURRENT_OPTION=$(($CURRENT_OPTION+1))
+    fi
+}
+
+cursor_to_current_option() {
     local inputCurrentOption=$1
-    local inputTotalOptions=$2
 
-    cursor_to_bottom $inputCurrentOption $inputTotalOptions
-
-    for (( i=0; i <= $inputTotalOptions; i++ )); do
-        echo -ne "\033[2K\033[1A"
-    done
-    echo -ne "\033[1B"
-}
-
-print_navigation_instructions() {
-    printf "\e[2mSelect branch (Press <space> to select, <a> to toggle all, <i> to invert selection, and <enter> to proceed)\e[0m\n"
-}
-
-toggle_selector_icon() {
-    local outputPrintedOptions=$1
-    local inputCurrentOption=$2
-    local inputPrintedOptions=("${@:3}")
-
-    printedOptions=("${inputPrintedOptions[@]}")
-
-    if [[ "${inputPrintedOptions[$inputCurrentOption]}" =~ ^"$SELECTED_ICON" ]]; then
-        printedOptions[$inputCurrentOption]="${UNSELECTED_ICON}${inputPrintedOptions[$inputCurrentOption]:1}"
-    elif [[ "${inputPrintedOptions[$inputCurrentOption]}" =~ ^"$UNSELECTED_ICON" ]]; then
-        printedOptions[$inputCurrentOption]="${SELECTED_ICON}${inputPrintedOptions[$inputCurrentOption]:1}"
-    else
-        printedOptions[$inputCurrentOption]="${inputPrintedOptions[$inputCurrentOption]}"
+    returnDirection="up"
+    if [[ "$inputCurrentOption" -lt "$CURRENT_OPTION" ]]; then
+        returnDirection="down"
     fi
 
-    eval "$outputPrintedOptions=(\"\${printedOptions[@]}\")"
-}
+    while [[ "$inputCurrentOption" -ne "$CURRENT_OPTION" ]]
+    do
+        if [[ "$returnDirection" == "up" ]]; then
+            cursor_up
+            inputCurrentOption=$(($inputCurrentOption-1))
 
-navigate_options() {
-    local ouputPrintedOptions=$1
-    local inputCurrentOption=$2
-    local inputTotalOptions=$3
-    local inputPrintedOptions=("${@:4}")
-
-    currentOption="$inputCurrentOption"
-    printedOptions=("${inputPrintedOptions[@]}")
-
-    while true; do
-        get_user_input 1 userInput
-
-        if [[ "$userInput" == $'\e' ]]; then
-            get_user_input 2 arrowInput
-            case "$arrowInput" in
-                "[A")
-                    cursor_up $currentOption currentOption
-                    ;;
-                "[B")
-                    cursor_down $currentOption $inputTotalOptions currentOption
-                    ;;
-                *)
-                    ;;
-            esac
         else
-            case "$userInput" in
-                "k")
-                    cursor_up $currentOption currentOption
-                    ;;
-                "j")
-                    cursor_down $currentOption $inputTotalOptions currentOption
-                    ;;
-                "a")
-                    echo "toggle_all_options"
-                    ;;
-                " ")
-                    select_option printedOptions $currentOption "${printedOptions[@]}"
-                    ;;
-                "i")
-                    invert_option_selection printedOptions $currentOption $inputTotalOptions "${printedOptions[@]}"
-                    ;;
-                "")
-                    echo "proceed"
-                    break
-                    ;;
-                *)
-                    ;;
-            esac
+            cursor_down
+            inputCurrentOption=$(($inputCurrentOption+1))
         fi
     done
 }
 
-invert_option_selection() {
-    local outputPrintedOptions=$1
-    local inputCurrentOption=$2
-    local inputTotalOptions=$3
-    local inputPrintedOptions=("${@:4}")
-
-    printedOptions=("${inputPrintedOptions[@]}")
-    for optionIndex in ${!inputPrintedOptions[@]}
+cursor_to_bottom() {
+    currentOption="$CURRENT_OPTION"
+    while [[ "$currentOption" -lt "$TOTAL_OPTIONS" ]]
     do
-        toggle_selector_icon printedOptions $optionIndex "${printedOptions[@]}"
+        cursor_down
+        currentOption=$(($currentOption+1))
     done
-
-    delete_options $inputCurrentOption $inputTotalOptions
-    printf "%s\n" "${printedOptions[@]}"
-    
-    currentOption=$((inputTotalOptions + 1))
-
-    while [[ $currentOption -gt $inputCurrentOption ]]; do
-        cursor_up $currentOption currentOption
-    done
-
-    eval "$outputPrintedOptions=(\"\${printedOptions[@]}\")"
 }
 
-select_option() {
-    local outputPrintedOptions=$1
-    local inputCurrentOption=$2
-    local inputPrintedOptions=("${@:3}")
+delete_line() {
+    echo -ne "\033[2K\033[1A"
+}
 
-    printedOptions=("${inputPrintedOptions[@]}")
-    toggle_selector_icon printedOptions $inputCurrentOption "${printedOptions[@]}"
-    delete_current_option
-    printf "%s\n" "${printedOptions[$inputCurrentOption]}"
-    echo -en "\033[1A"
+delete_options() {
+    cursor_to_bottom
+    for (( i=0; i <= $TOTAL_OPTIONS; i++ )); do
+        delete_line
+    done
+    cursor_down
 }
 
 get_options_from_command() {
@@ -203,4 +100,128 @@ get_user_input() {
     reset_delimiter
 
     eval "$outputUserInput=\"$input\""
+}
+
+print_navigation_instructions() {
+    printf "\e[2mSelect branch (Press <space> to select, <a> to toggle all, <i> to invert selection, and <enter> to proceed)\e[0m\n"
+}
+
+print_options() {
+    local inputCurrentOption=$1
+    local inputPrintedOptions=("${@:2}")
+
+    for printedOptionIndex in "${!inputPrintedOptions[@]}"
+    do
+        printedOption=""
+
+        if [[ "${SELECTIONS[$printedOptionIndex]}" == "true" ]]; then
+            printedOption+="${SELECTED_ICON} "
+        else
+            printedOption+="${UNSELECTED_ICON} "
+        fi
+
+        printedOption+="${inputPrintedOptions[$printedOptionIndex]}"
+        printf "%s\n" "$printedOption"
+    done
+
+    cursor_to_current_option "$inputCurrentOption"
+}
+
+navigate_options() {
+    local inputPrintFunction=$1
+
+    while true; do
+        get_user_input 1 userInput
+
+        if [[ "$userInput" == $'\e' ]]; then
+            get_user_input 2 arrowInput
+            case "$arrowInput" in
+                "[A")
+                    safe_cursor_up
+                    ;;
+                "[B")
+                    safe_cursor_down
+                    ;;
+                *)
+                    ;;
+            esac
+        else
+            case "$userInput" in
+                "k")
+                    safe_cursor_up
+                    ;;
+                "j")
+                    safe_cursor_down
+                    ;;
+                " ")
+                    select_option $inputPrintFunction
+                    ;;
+                "a")
+                    toggle_all_options $inputPrintFunction
+                    ;;
+                "i")
+                    invert_option_selection $inputPrintFunction
+                    ;;
+                "")
+                    break
+                    ;;
+                *)
+                    ;;
+            esac
+        fi
+    done
+}
+
+select_option() {
+    local inputPrintFunction=$1
+
+    if [[ "${SELECTIONS[$CURRENT_OPTION]}" == "true" ]]; then
+        SELECTIONS[$CURRENT_OPTION]=false
+    else
+        SELECTIONS[$CURRENT_OPTION]=true
+    fi
+
+    delete_options
+    eval "$inputPrintFunction $(($TOTAL_OPTIONS+1))"
+}
+
+toggle_all_options() {
+    local inputPrintFunction=$1
+
+    selectedOptionCount=0
+    for selection in "${SELECTIONS[@]}"
+    do
+        if [[ "$selection" == "true" ]]; then
+            selectedOptionCount=$(($selectedOptionCount+1))
+        fi
+    done
+
+    newSelectionValue=true
+    if [[ "$selectedOptionCount" -gt $(($TOTAL_OPTIONS/2)) ]]; then
+        newSelectionValue=false
+    fi
+
+    for selectionIndex in "${!SELECTIONS[@]}"
+    do
+        SELECTIONS[$selectionIndex]="$newSelectionValue"
+    done
+
+    delete_options
+    eval "$inputPrintFunction $(($TOTAL_OPTIONS+1))"
+}
+
+invert_option_selection() {
+    local inputPrintFunction=$1
+
+    for selectionIndex in "${!SELECTIONS[@]}"
+    do
+        if [[ "${SELECTIONS[$selectionIndex]}" == "true" ]]; then
+            SELECTIONS[$selectionIndex]=false
+        else
+            SELECTIONS[$selectionIndex]=true
+        fi
+    done
+
+    delete_options
+    eval "$inputPrintFunction $(($TOTAL_OPTIONS+1))"
 }
